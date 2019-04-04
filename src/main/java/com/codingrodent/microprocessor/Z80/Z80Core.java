@@ -43,8 +43,10 @@ public class Z80Core implements ICPUData {
     private boolean EIDIFlag;
     private boolean IFF1, IFF2;
     private boolean NMI_FF;
+    private boolean INT;
     private boolean blockMove;
     private int resetAddress;
+    private int interruptMode;
 
     /**
      * Standard constructor. Set the processor up with a memory and I/O interface.
@@ -107,6 +109,11 @@ public class Z80Core implements ICPUData {
     public void setNMI() {
         NMI_FF = true;
     }
+
+    /**
+     * Initiate an interrupt
+     */
+    public void setInt(){ INT = true; }
 
     /**
      * Returns the state of the halt flag
@@ -213,13 +220,42 @@ public class Z80Core implements ICPUData {
             } else {
                 NMI_FF = false; // interrupt accepted
                 IFF2 = IFF1; // store IFF state
-                dec2SP();
                 if (halt) {
                     incPC(); // Was a bug ! - point to instruction after(!) interrupt location. HALT decrements PC !!!
                 }
+                dec2SP();
                 ram.writeWord(reg_SP, reg_PC);
                 reg_PC = 0x0066; // NMI routine location
+                tStates += 11;
             }
+        }else if (INT) {
+            if (EIDIFlag) {
+                EIDIFlag = false;
+            } else {
+                INT = false; // interrupt accepted
+                IFF1 = IFF2 = false; // disable further interrupts
+                 if (halt) {
+                    incPC(); // Was a bug ! - point to instruction after(!) interrupt location. HALT decrements PC !!!
+                }
+                dec2SP();
+                ram.writeWord(reg_SP, reg_PC);
+
+                switch (interruptMode){
+                    case 0:
+                        //Not Supported
+                        break;
+                    case 1 :
+                        reg_PC = 0x0038; // Mode1 interrupt location routine location
+                        tStates += 13;
+                        break;
+                    case 2:
+                        int temp = reg_I<<8 | io.IORead(0x00);
+                        reg_PC = ram.readWord(temp); // Mode2 interrupt routine location
+                        tStates += 19;
+                        break;
+                }
+             }
+
         }
         halt = false;
         instruction = ram.readByte(reg_PC);
@@ -6511,7 +6547,7 @@ public class Z80Core implements ICPUData {
      */
 
     private void IM(int mode) {
-        // interruptMode = mode;
+        interruptMode = mode;
     }
 
     /*
